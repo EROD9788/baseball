@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sandlot Baseball</title>
+<style>
+:root{--bg:#f4f1e8;--fg:#1c2b1f;--card:#fffdf6;--bd:#cdc6ae;--ac:#1f7a43;--acf:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101712;--fg:#e6eee7;--card:#1a251d;--bd:#34473a;--ac:#47b873;--acf:#06140b}}
+:root[data-theme="dark"]{--bg:#101712;--fg:#e6eee7;--card:#1a251d;--bd:#34473a;--ac:#47b873;--acf:#06140b}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:820px;margin:0 auto;padding:10px}
+h1{font-size:20px;margin:4px 0 8px}
+#wrap{position:relative}
+canvas{width:100%;height:auto;display:block;border-radius:10px;touch-action:none;background:#2d6a38}
+#ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);border-radius:10px}
+.card{background:var(--card);padding:18px 22px;border-radius:12px;max-width:430px;text-align:center;border:1px solid var(--bd)}
+.card h2{margin:0 0 6px}.card p{margin:6px 0}
+.g{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;justify-content:center}
+button,select{font:inherit;padding:10px 14px;border-radius:9px;border:1px solid var(--bd);background:var(--card);color:var(--fg);cursor:pointer;touch-action:manipulation}
+button.big,button#go,button.on{background:var(--ac);color:var(--acf);border-color:var(--ac)}
+#hint{margin:10px 2px;font-size:14px;opacity:.85}
+</style></head><body><main>
+<h1>⚾ Sandlot Baseball</h1>
+<div id="wrap"><canvas id="c" width="800" height="600"></canvas>
+<div id="ov"><div class="card"><h2 id="t">Play ball!</h2>
+<p id="d">You’re the visitors: you bat in the top of each inning, then pitch and field in the bottom. Beat the CPU!</p>
+<p><label>Innings <select id="inn"><option>1</option><option selected>3</option><option>5</option><option>9</option></select></label></p>
+<button id="go">Start game</button></div></div></div>
+<div id="gB" class="g"><button data-a="swing" class="big">Swing (Space)</button><button data-a="adv">Run ▶ (A)</button><button data-a="ret">◀ Back (R)</button></div>
+<div id="gP" class="g"><button data-a="p0">Fastball 1</button><button data-a="p1">Curve 2</button><button data-a="p2">Change 3</button><button data-a="pitch" class="big">Pitch (Space)</button></div>
+<div id="gT" class="g"><button data-a="t1">1st (1)</button><button data-a="t2">2nd (2)</button><button data-a="t3">3rd (3)</button><button data-a="t4">Home (4)</button></div>
+<p id="hint"></p></main>
+<script>
+const $=s=>document.querySelector(s),C=$('#c'),X=C.getContext('2d');
+const HX=400,HY=548,S=1.75,WALL=290,ZX=400,ZY=285,ZS=88,SPD=.28,FS=21,TS=90;
+const px=x=>HX+x*S,py=y=>HY-y*S,hy=Math.hypot,cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rn=()=>{let a=0;for(let i=0;i<4;i++)a+=Math.random();return(a-2)*1.73};
+const BS=[[0,0],[64,64],[0,127],[-64,64],[0,0]];
+const bpos=p=>{p=cl(p,0,4);const i=Math.min(3,p|0),f=p-i,a=BS[i],b=BS[i+1];return[a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]};
+const FP=[['P',0,60],['C',0,-3],['1B',62,72],['2B',34,130],['SS',-34,130],['3B',-62,72],['LF',-150,235],['CF',0,265],['RF',150,235]];
+const COV=[[2,0,3],[4,3],[5,4],[1,0]],PN=['Fastball','Curveball','Changeup'];
+let G,F,R,B,P={t:0,T:1,x:0,y:0,type:0},aim={x:0,y:0},pt=0,lastUI='';
+const tm=()=>G.top?0:1,rc=()=>{G.b=G.s=0},say=t=>{G.msg=t;G.mt=1.7};
+const newB=()=>({x:0,y:0,z:0,vx:0,vy:0,vz:0,held:F[0],ht:0,landed:0,thr:0,cd:0});
+function init(n){F=FP.map(([m,x,y])=>({m,hx:x,hy:y,x,y}));R=[];B=newB();G={N:n,inn:1,top:1,outs:0,b:0,s:0,sc:[0,0],st:'ready',wait:1.2,msg:'',mt:0,inplay:0,foul:0,pr:0,pt:0,ict:0,ovr:null,ch:null,ip:[0,100],cov:[],bat:null,flyo:0,last:-1,hw:null}}
+init(3);G.st='over';
+function ov(t,d,b){$('#t').textContent=t;$('#d').innerHTML=d;$('#go').textContent=b;$('#ov').style.display='flex'}
+$('#go').onclick=()=>{init(+$('#inn').value);$('#ov').style.display='none'};
+function over(){G.st='over';ov(G.sc[0]>G.sc[1]?'You win! 🎉':'CPU wins','Final: You '+G.sc[0]+' – CPU '+G.sc[1],'Play again')}
+function endHalf(){R=[];G.outs=0;rc();G.inplay=G.foul=0;G.bat=null;G.st='sw';G.wait=2.2;B=newB();say('Three outs – switching sides')}
+function nextHalf(){if(G.top){if(G.inn>=G.N&&G.sc[1]>G.sc[0])return over();G.top=0}else{if(G.inn>=G.N&&G.sc[0]!=G.sc[1])return over();G.top=1;G.inn++}
+ F.forEach(f=>{f.x=f.hx;f.y=f.hy});G.st='ready';G.wait=1.3;pt=0}
+/* ---------- runners ---------- */
+function forced(r){const fb=r.p|0;for(let j=0;j<fb;j++)if(!R.some(q=>q!==r&&!q.out&&(q.p|0)===j))return false;return true}
+function adv(r){if(r.out)return;const nb=Math.floor(r.p+1e-9)+1;if(nb>4||R.some(q=>q!==r&&!q.out&&q.p===nb&&q.tgt===nb))return;r.tgt=nb}
+function ret(r){if(r.out||r.p===(r.p|0))return;r.tgt=r.p|0}
+function runAll(d){if(G.st=='over'||G.st=='sw')return;R.slice().sort((a,b)=>b.p-a.p).forEach(r=>{d>0?adv(r):ret(r);r.man=1})}
+function mvR(dt){R.sort((a,b)=>b.p-a.p);for(const r of R){if(r.out)continue;const d=r.tgt-r.p;
+ if(d){const s=SPD*dt;r.p=Math.abs(d)<=s?r.tgt:r.p+Math.sign(d)*s}
+ if(r.must!=null&&r.p===r.must)r.must=null;
+ if(r.p>=4){r.out=1;r.sc=1;G.sc[tm()]++;G.pr++;say('Run scores!')}}}
+function walk(){const at=k=>R.find(r=>!r.out&&r.p===k),ch=[];for(let k=1;k<=3&&at(k);k++)ch.push(at(k));
+ ch.forEach(r=>{r.p++;r.tgt=r.p;if(r.p>=4){r.out=1;r.sc=1;G.sc[tm()]++}});R.push({p:1,tgt:1})}
+function startRun(hold){const bt={p:0,tgt:1};G.bat=bt;G.fs=null;R.push(bt);const fs=R.filter(r=>r!==bt&&!r.out&&forced(r));if(hold)G.fs=fs;else fs.forEach(r=>r.tgt=(r.p|0)+1)}
+function aiRun(){if(!G.inplay||!(B.landed||B.held))return;const o=B.held||B;
+ for(const r of R){if(r.out||r.man||r.p!==r.tgt||r.p>=4||r.must!=null)continue;const nb=r.p+1,[bx,by]=bpos(nb);
+  if(R.some(q=>q!==r&&!q.out&&q.p===nb&&q.tgt===nb))continue;
+  if(hy(o.x-bx,o.y-by)/TS+(B.held?1:2.2)>(G.top?4:3.7))adv(r)}}
+/* ---------- ball physics ---------- */
+function phys(b,dt){if(b.held){b.x=b.held.x;b.y=b.held.y;b.z=3;return}
+ b.vz-=32*dt;b.x+=b.vx*dt;b.y+=b.vy*dt;b.z+=b.vz*dt;
+ if(b.z<=0){b.z=0;b.landed=1;if(b.vz<-5){b.vz=-b.vz*.45;b.vx*=.85;b.vy*=.85}else{b.vz=0;const f=Math.exp(-1.2*dt);b.vx*=f;b.vy*=f;if(hy(b.vx,b.vy)<1.5)b.vx=b.vy=0}}
+ else if(!b.thr){const f=Math.exp(-.1*dt);b.vx*=f;b.vy*=f}
+ const r=hy(b.x,b.y);if(r>WALL&&(b.z<=11||b.landed)){const nx=b.x/r,ny=b.y/r,vr=b.vx*nx+b.vy*ny;if(vr>0){b.vx-=1.5*vr*nx;b.vy-=1.5*vr*ny}b.x=nx*WALL;b.y=ny*WALL}}
+function hit(q,dt,diff){const th=cl(dt*400+rn()*3,-80,80)*Math.PI/180,ph=cl(5+diff*28+rn()*4,-10,42)*Math.PI/180,v=55+q*95;
+ B=newB();B.held=null;B.z=3;B.vx=v*Math.cos(ph)*Math.sin(th);B.vy=v*Math.cos(ph)*Math.cos(th);B.vz=v*Math.sin(ph);
+ G.st='play';G.pt=0;G.pr=0;G.ch=null;G.cv=null;G.ict=0;G.ovr=null;G.hw=null;
+ if(Math.abs(th)<=Math.PI/4){G.inplay=1;G.foul=0;startRun(ph>.3)}else{G.foul=1;G.inplay=0}}
+function homer(){const n=R.filter(r=>!r.out).length;G.sc[tm()]+=n;say('HOME RUN! +'+n);R=[];G.inplay=0;G.bat=null;rc();G.st='ready';G.wait=2;B=newB();G.ovr=null}
+function flyOut(){G.outs++;G.flyo=1;rc();say(G.foul?'Foul fly out!':'Fly out!');G.foul=0;if(G.bat)G.bat.out=1;
+ if(G.outs>=3)return endHalf();R.forEach(r=>{if(!r.out&&r.p!==(r.p|0)){r.must=r.p|0;r.tgt=r.must}})}
+function cc(){if(B.held)return;for(const f of F){if(B.thr&&f===B.thrower&&B.cd>0)continue;
+ if(hy(f.x-B.x,f.y-B.y)<3.1&&B.z<11){const fly=!B.landed&&!B.thr&&(G.inplay||G.foul);B.held=f;B.ht=0;B.thr=0;G.hw=null;if(fly)flyOut();return}}}
+function throwTo(k){const f=B.held;if(!f)return;const[tx,ty]=bpos(k),d=hy(tx-f.x,ty-f.y);if(d<4)return;const T=Math.max(.3,d/TS),e=1.2;
+ B.held=null;B.thr=1;B.thrower=f;B.cd=.3;B.landed=0;B.x=f.x;B.y=f.y;B.z=5;B.vx=(tx-f.x)/T+rn()*e;B.vy=(ty-f.y)/T+rn()*e;B.vz=(1-5+16*T*T)/T;G.hw=null}
+function autoThrow(){const f=B.held;let best=-1;
+ for(const r of R){if(r.out)continue;let k=-1;if(r.must!=null&&r.p>r.must)k=r.must;else if(r.tgt>r.p)k=(r.p|0)+1;else if(r.tgt<r.p)k=r.tgt;if(k>best)best=k}
+ if(best<0)return;const[bx,by]=bpos(best);if(hy(f.x-bx,f.y-by)<30){G.hw=[bx,by];return}throwTo(best)}
+function chk(){const f=B.held;if(!f)return;
+ for(const r of R){if(r.out)continue;const[rx,ry]=bpos(r.p),on=r.p===(r.p|0);let o=0,fo=0;
+  if(r.must!=null&&r.p>r.must){const[bx,by]=bpos(r.must);if(hy(f.x-bx,f.y-by)<4)o=1}
+  if(!o&&!on&&hy(f.x-rx,f.y-ry)<3.6)o=1;
+  if(!o&&r.tgt>r.p&&forced(r)){const k=(r.p|0)+1,[bx,by]=bpos(k);if(hy(f.x-bx,f.y-by)<4&&r.p<k)o=fo=1}
+  if(o){r.out=1;G.outs++;say(fo?'Force out!':'Tagged out!');if(G.outs>=3){if(fo)G.sc[tm()]-=G.pr;return endHalf()}}}}
+/* ---------- fielders ---------- */
+function pick(){const b=Object.assign({},B);b.held=null;let best=null;
+ for(let t=.05;t<=6&&!best;t+=.05){phys(b,.05);if(b.z<10&&(b.vz<0||b.z<1))for(const f of F){if(f===B.thrower&&B.cd>0)continue;
+  if(hy(f.x-b.x,f.y-b.y)<=(f===F[2]?.5:1)*FS*t+2+(f===G.ch?5:0)&&(!best||t<best.t))best={f,t,x:b.x,y:b.y}}}
+ if(!best){let m=1e9;for(const f of F){const d=hy(f.x-b.x,f.y-b.y);if(d<m){m=d;best={f,x:b.x,y:b.y}}}}
+ G.ch=best.f;G.ip=[best.x,best.y]}
+function mvF(dt){const pl=G.st=='play',h=B.held;let ch=null;
+ if(pl&&!h){G.ict-=dt;if(G.ict<=0||!G.ch){G.ict=.15;pick()}ch=G.ovr||G.ch}
+ const tg=new Map(),used=new Set([h,ch]);
+ if(pl){const cv=G.cv||(G.cv={}),u=new Set([ch]);COV.forEach((l,k)=>{const f=cv[k];if(f&&!u.has(f))u.add(f);else cv[k]=null});COV.forEach((l,k)=>{if(!cv[k]){const f=l.map(i=>F[i]).find(f=>!u.has(f)&&f!==h);if(f){u.add(f);cv[k]=f}}});COV.forEach((l,k)=>{if(cv[k])tg.set(cv[k],bpos(k+1))})}
+ for(const f of F){const t=f===ch?G.ip:f===h?G.hw:tg.get(f)||[f.hx,f.hy];if(!t)continue;
+  const dx=t[0]-f.x,dy=t[1]-f.y,d=hy(dx,dy),s=FS*dt;if(d<=s){f.x=t[0];f.y=t[1]}else{f.x+=dx/d*s;f.y+=dy/d*s}}}
+/* ---------- pitching & batting ---------- */
+function throwPitch(type,tx,ty,sd){P={type,x:tx+rn()*sd,y:ty+rn()*sd,t:0,T:[.95,1.2,1.4][type],swung:0,sw:-1};G.st='pitch'}
+function cpuPitch(){const t=Math.random(),ty=t<.55?0:t<.85?1:2;let x,y;
+ if(Math.random()<.42){x=(Math.random()*2-1)*.8;y=(Math.random()*2-1)*.8}else{const a=Math.random()*6.28,r=1.15+Math.random()*.4;x=Math.cos(a)*r;y=Math.sin(a)*r}
+ if(ty==1)y-=.15;throwPitch(ty,x,y,.1)}
+function pitchNow(){if(G.top||G.st!='ready')return;throwPitch(pt,aim.x,aim.y,[.2,.3,.26][pt])}
+function swing(){if(!G.top||G.st!='pitch'||P.swung)return;P.swung=1;P.sw=P.t;
+ const dt=P.t+.06-P.T,qt=1-Math.abs(dt)/.16,qm=1-hy(P.x-aim.x,P.y-aim.y)/1.6;
+ if(qt>0&&qm>0)hit(cl(qt*.6+qm*.45+.1,.15,1),dt,P.y-aim.y)}
+function cpuBat(){const p=P,inz=Math.abs(p.x)<=1&&Math.abs(p.y)<=1,d=hy(p.x,p.y),same=G.last==p.type;G.last=p.type;
+ let sw=inz?(p.type==1?.62:.74):d<1.5?.28:.07;if(G.s==2)sw+=.18;if(G.b==3&&!inz)sw-=.15;
+ if(Math.random()>sw)return call(inz?'strike':'ball');
+ if(Math.random()>.84-.26*Math.min(d,1.6)-(p.type?.07:0)+(same?.07:0))return call('strike');
+ hit(cl(.5+rn()*.25-.15*Math.max(0,d-.7)+(same?.05:0),.06,1),rn()*.045+[0,.012,.05][p.type],rn()*.45)}
+function call(k){
+ if(k=='ball'){G.b++;if(G.b>=4){say('Walk');walk();rc()}else say('Ball '+G.b+'–'+G.s)}
+ else if(k=='strike'){G.s++;if(G.s>=3){say('Strikeout!');G.outs++;rc()}else say('Strike '+G.s)}
+ else{if(G.s<2)G.s++;say('Foul ball')}
+ if(G.outs>=3)return endHalf();
+ R=R.filter(r=>!r.out);G.bat=null;G.inplay=G.foul=0;G.ovr=null;G.ch=null;G.pt=0;G.pr=0;
+ if(R.some(r=>r.tgt!==r.p)){G.st='play';B=newB();B.held=F[1]}else{G.st='ready';G.wait=1.3;B=newB()}}
+function endPlay(){let t='';const b=G.bat;
+ if(G.inplay&&b)t=b.sc?'Inside-the-park homer!':b.out?(G.flyo?'Fly out':'Out'):(['','Single','Double','Triple'][b.p|0]||'Safe');
+ if(G.pr)t+=(t?' · ':'')+G.pr+(G.pr>1?' runs':' run')+' scored';
+ if(G.inplay)rc();R=R.filter(r=>!r.out);R.forEach(r=>{r.p=r.tgt;r.must=null;r.man=0});
+ G.inplay=G.foul=G.flyo=0;G.cv=null;G.fs=null;G.bat=null;G.hw=null;G.ovr=null;G.pr=0;B=newB();G.st='ready';G.wait=1.4;if(t)say(t)}
+function play(dt){G.pt+=dt;const n=Math.ceil(dt/.01),h=dt/n;
+ for(let i=0;i<n&&G.st=='play';i++){phys(B,h);if(B.cd>0)B.cd-=h;
+  if(G.foul&&B.landed&&!B.held){G.foul=0;call('foul');break}
+  if(G.inplay&&!B.landed&&!B.thr&&!B.held&&hy(B.x,B.y)>WALL&&B.z>11){homer();break}
+  cc()}
+ if(G.st!='play')return;if(G.fs&&(B.landed||B.held)){G.fs.forEach(r=>{if(!r.out&&r.p===(r.p|0))r.tgt=r.p+1});G.fs=null}mvF(dt);mvR(dt);aiRun();chk();if(G.st!='play')return;
+ if(B.held){B.ht+=dt;if(B.ht>(G.top?.8:1.1)+(hy(B.held.x,B.held.y)>150?.6:0))autoThrow()}
+ if((B.held&&B.ht>.9&&R.every(r=>r.out||(r.p===r.tgt&&r.must==null)))||G.pt>25)endPlay()}
+function upd(dt){if(G.mt>0)G.mt-=dt;const s=G.st;if(s=='over')return;
+ if(s=='sw'){G.wait-=dt;if(G.wait<=0)nextHalf();return}
+ if(!G.top&&G.inn>=G.N&&G.sc[1]>G.sc[0]&&s!='play')return over();
+ if(s=='ready'){mvR(dt);mvF(dt);if(G.top){G.wait-=dt;if(G.wait<=0)cpuPitch()}}
+ else if(s=='pitch'){P.t+=dt;mvR(dt);mvF(dt);
+  if(G.st=='pitch'&&P.t>=P.T){if(G.top)call(P.swung||(Math.abs(P.x)<=1&&Math.abs(P.y)<=1)?'strike':'ball');else cpuBat()}}
+ else if(s=='play')play(dt)}
+/* ---------- drawing ---------- */
+function circ(x,y,r,f,s){X.beginPath();X.arc(x,y,r,0,7);if(f){X.fillStyle=f;X.fill()}if(s){X.strokeStyle=s;X.lineWidth=2;X.stroke()}}
+function draw(){X.clearRect(0,0,800,600);X.fillStyle='#2d6a38';X.fillRect(0,0,800,600);
+ X.fillStyle='#3d8c4a';X.beginPath();X.moveTo(HX,HY);X.lineTo(px(205),py(205));X.arc(HX,HY,WALL*S,-Math.PI/4,-3*Math.PI/4,true);X.closePath();X.fill();
+ circ(px(0),py(72),96*S,'#b88a5a');
+ X.fillStyle='#3d8c4a';X.beginPath();BS.slice(0,4).forEach((b,i)=>X[i?'lineTo':'moveTo'](px(b[0]*.8),py(63.5+(b[1]-63.5)*.8)));X.fill();
+ X.strokeStyle='rgba(255,255,255,.7)';X.lineWidth=1.5;X.beginPath();BS.forEach((b,i)=>X[i?'lineTo':'moveTo'](px(b[0]),py(b[1])));X.stroke();
+ X.beginPath();X.moveTo(HX,HY);X.lineTo(px(206),py(206));X.moveTo(HX,HY);X.lineTo(px(-206),py(206));X.stroke();
+ X.strokeStyle='#17325f';X.lineWidth=8;X.beginPath();X.arc(HX,HY,WALL*S+4,-Math.PI/4,-3*Math.PI/4,true);X.stroke();
+ circ(px(0),py(60),9,'#c9a070');X.fillStyle='#fff';BS.slice(0,4).forEach(b=>X.fillRect(px(b[0])-5,py(b[1])-5,10,10));
+ const fc=G.top?'#ef4444':'#3b82f6',bc=G.top?'#3b82f6':'#ef4444';
+ X.font='9px system-ui';X.textAlign='center';
+ for(const f of F){circ(px(f.x),py(f.y),7,fc,f===B.held?'#fde047':f===G.ovr?'#fff':'rgba(255,255,255,.6)');X.fillStyle='#fff';X.fillText(f.m,px(f.x),py(f.y)+18)}
+ for(const r of R){if(r.out)continue;const[x,y]=bpos(r.p);circ(px(x),py(y),6.5,bc,'#fff')}
+ if(G.st=='ready'||G.st=='pitch')circ(px(-7),py(-4),6.5,bc,'#fff');
+ if(G.st=='play'){circ(px(B.x),py(B.y),3,'rgba(0,0,0,.4)');circ(px(B.x),py(B.y)-B.z*S*.7,4,'#fff','#222')}
+ if(G.st=='ready'||G.st=='pitch'){
+  X.fillStyle='rgba(8,16,10,.72)';X.fillRect(ZX-160,ZY-160,320,320);
+  X.strokeStyle='#fff';X.lineWidth=2;X.strokeRect(ZX-ZS,ZY-ZS,2*ZS,2*ZS);X.lineWidth=.5;X.beginPath();
+  for(let i=1;i<3;i++){X.moveTo(ZX-ZS+i*ZS*2/3,ZY-ZS);X.lineTo(ZX-ZS+i*ZS*2/3,ZY+ZS);X.moveTo(ZX-ZS,ZY-ZS+i*ZS*2/3);X.lineTo(ZX+ZS,ZY-ZS+i*ZS*2/3)}X.stroke();
+  const ax=ZX+aim.x*ZS,ay=ZY-aim.y*ZS;
+  if(G.top){X.strokeStyle=P.swung&&G.st=='pitch'?'#fb923c':'#fde047';X.lineWidth=3;X.setLineDash([6,4]);X.beginPath();X.arc(ax,ay,40,0,7);X.stroke();X.setLineDash([])}
+  else{X.strokeStyle='#fde047';X.lineWidth=2;X.beginPath();X.arc(ax,ay,[.2,.3,.26][pt]*ZS,0,7);X.moveTo(ax-14,ay);X.lineTo(ax+14,ay);X.moveTo(ax,ay-14);X.lineTo(ax,ay+14);X.stroke()}
+  if(G.st=='pitch'){const u=Math.min(1,P.t/P.T),bx=P.x*u,by=.5+(P.y-.5)*u+(P.type==1?.9*(1-u)*(1-u):0);
+   const gd=G.top&&!P.swung&&Math.abs(P.t-(P.T-.06))<.08;if(G.top){X.strokeStyle=gd?'#22c55e':'rgba(255,255,255,.7)';X.lineWidth=gd?5:2;X.beginPath();X.arc(ZX+P.x*ZS,ZY-P.y*ZS,19,0,7);X.stroke()}circ(ZX+bx*ZS,ZY-by*ZS,2+15*u*u,'#fff','#c33');if(gd){X.fillStyle='#22c55e';X.font='bold 22px system-ui';X.fillText('SWING!',ZX,ZY-130)}X.fillStyle='#fff';X.font='13px system-ui';X.fillText(PN[P.type],ZX,ZY+150)}
+  else if(!G.top){X.fillStyle='#fff';X.font='13px system-ui';X.fillText(PN[pt]+' – aim and click',ZX,ZY+150)}}
+ X.fillStyle='rgba(0,0,0,.6)';X.fillRect(8,8,214,78);X.fillStyle='#fff';X.textAlign='left';
+ X.font='bold 15px system-ui';X.fillText('YOU '+G.sc[0]+'  –  '+G.sc[1]+' CPU',16,28);
+ X.font='13px system-ui';X.fillText((G.top?'▲ ':'▼ ')+'Inning '+G.inn+'/'+G.N+'   Outs '+G.outs,16,48);X.fillText('Balls '+G.b+'   Strikes '+G.s,16,66);
+ X.fillStyle='#bbb';X.font='11px system-ui';X.fillText(G.top?'You: batting':'You: pitching & fielding',16,81);
+ const oc=k=>R.some(r=>!r.out&&r.p===k);[[2,745,22],[1,763,40],[3,727,40]].forEach(([k,x,y])=>{X.save();X.translate(x,y);X.rotate(.785);X.fillStyle=oc(k)?'#fde047':'rgba(255,255,255,.4)';X.fillRect(-6,-6,12,12);X.restore()});
+ if(G.mt>0){X.globalAlpha=Math.min(1,G.mt*2);X.textAlign='center';X.font='bold 30px system-ui';X.lineWidth=5;X.strokeStyle='#000';X.strokeText(G.msg,400,75);X.fillStyle='#fff';X.fillText(G.msg,400,75);X.globalAlpha=1}}
+/* ---------- UI & input ---------- */
+const HINT={zb:'Move the mouse (or finger) to put the yellow ring where the pitch will cross the plate, then click or press Space when the target ring turns green and SWING! appears (the ball grows to fill the ring). Swing early to pull the ball, late to go the other way. Press A to send runners (steal), R to send them back.',
+ zf:'Pick a pitch (1 fastball, 2 curve, 3 changeup), move the cursor to aim at the strike zone, then click or press Space. Faster pitches are less accurate to the corners; mix them up!',
+ pb:'Ball in play! Runners ahead of a batter run automatically. A = advance everyone, R = send back, or click a runner to send or recall him. Watch the fielders: tag-ups after fly balls are allowed.',
+ pf:'Fielders chase automatically; click a fielder to take over the chase. Once someone has the ball, throw with 1–4 or click a base (otherwise he throws after a moment). Get the lead runner!',x:''};
+function ui(){const m=G.st=='play'?'p':(G.st=='ready'||G.st=='pitch')?'z':'x',k=m+G.top+pt;if(k==lastUI)return;lastUI=k;
+ $('#gB').style.display=G.top?'flex':'none';$('#gP').style.display=(!G.top&&m=='z')?'flex':'none';$('#gT').style.display=(!G.top&&m=='p')?'flex':'none';
+ document.querySelectorAll('#gP [data-a]').forEach(b=>b.classList.toggle('on',b.dataset.a=='p'+pt));
+ $('#hint').textContent=m=='x'?'':HINT[m+(G.top?'b':'f')]}
+function cp(e){const r=C.getBoundingClientRect();return[(e.clientX-r.left)*800/r.width,(e.clientY-r.top)*600/r.height]}
+function setAim(e){const[x,y]=cp(e);aim.x=cl((x-ZX)/ZS,-1.6,1.6);aim.y=cl((ZY-y)/ZS,-1.6,1.6);return[x,y]}
+C.onpointermove=setAim;
+C.onpointerdown=e=>{e.preventDefault();const[x,y]=setAim(e);if(G.st=='over')return;
+ if(G.st=='play'){
+  if(G.top){const r=R.find(r=>{if(r.out)return 0;const[a,b]=bpos(r.p);return hy(px(a)-x,py(b)-y)<18});if(r){(r.tgt>r.p?ret:adv)(r);r.man=1}}
+  else if(B.held){for(let k=1;k<=4;k++){const[bx,by]=bpos(k);if(hy(px(bx)-x,py(by)-y)<20){throwTo(k);return}}}
+  else{const f=F.find(f=>hy(px(f.x)-x,py(f.y)-y)<20);if(f)G.ovr=f}}
+ else if(G.st=='ready'||G.st=='pitch')G.top?swing():pitchNow()};
+function act(k){if(G.st=='over')return;const z=G.st=='ready'||G.st=='pitch',p=G.st=='play';
+ if(/^\d$/.test(k)&&!G.top)k=z?'p'+(k-1):'t'+k;
+ if(k==' '||k=='swing'||k=='pitch'){if(z)G.top?swing():pitchNow()}
+ else if(G.top&&['a','arrowright','arrowup','adv'].includes(k))runAll(1);
+ else if(G.top&&['r','arrowleft','arrowdown','ret'].includes(k))runAll(-1);
+ else if(!G.top&&z&&/^p[0-2]$/.test(k))pt=+k[1];
+ else if(!G.top&&p&&/^t[1-4]$/.test(k)&&B.held)throwTo(+k[1])}
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k))e.preventDefault();if(!e.repeat)act(k)});
+document.querySelectorAll('[data-a]').forEach(b=>b.onpointerdown=e=>{e.preventDefault();act(b.dataset.a)});
+let lt=0;function loop(t){const dt=Math.min(.05,(t-lt)/1000||0);lt=t;upd(dt);draw();ui();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+</script></body></html>
