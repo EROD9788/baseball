@@ -1,4 +1,4 @@
-<!-- <!doctype html>
+<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sandlot Baseball</title>
@@ -95,8 +95,12 @@ function chk(){const f=B.held;if(!f)return;
 /* ---------- fielders ---------- */
 function pick(){const b=Object.assign({},B);b.held=null;let best=null;
  for(let t=.05;t<=6&&!best;t+=.05){phys(b,.05);if(b.z<10&&(b.vz<0||b.z<1))for(const f of F){if(f===B.thrower&&B.cd>0)continue;
-  if(hy(f.x-b.x,f.y-b.y)<=(f===F[2]?.5:1)*FS*t+2+(f===G.ch?5:0)&&(!best||t<best.t))best={f,t,x:b.x,y:b.y}}}
- if(!best){let m=1e9;for(const f of F){const d=hy(f.x-b.x,f.y-b.y);if(d<m){m=d;best={f,x:b.x,y:b.y}}}}
+  if(f===F[2]&&hy(b.x-64,b.y-64)>38)continue;
+  if(hy(f.x-b.x,f.y-b.y)<=FS*t+2+(f===G.ch?5:0)&&(!best||t<best.t))best={f,t,x:b.x,y:b.y}}}
+ if(!best){let m=1e9;for(const f of F){if(f===B.thrower&&B.cd>0)continue;
+  if(f===F[2]&&hy(b.x-64,b.y-64)>38)continue;
+  const d=hy(f.x-b.x,f.y-b.y);if(d<m){m=d;best={f,x:b.x,y:b.y}}}}
+ if(!best){for(const f of F){if(f===B.thrower&&B.cd>0)continue;const d=hy(f.x-b.x,f.y-b.y);if(d<m||!best){m=d;best={f,x:b.x,y:b.y}}}}
  G.ch=best.f;G.ip=[best.x,best.y]}
 function mvF(dt){const pl=G.st=='play',h=B.held;let ch=null;
  if(pl&&!h){G.ict-=dt;if(G.ict<=0||!G.ch){G.ict=.15;pick()}ch=G.ovr||G.ch}
@@ -127,7 +131,7 @@ function call(k){
  if(R.some(r=>r.tgt!==r.p)){G.st='play';B=newB();B.held=F[1]}else{G.st='ready';G.wait=1.3;B=newB()}}
 function endPlay(){let t='';const b=G.bat;
  if(G.inplay&&b)t=b.sc?'Inside-the-park homer!':b.out?(G.flyo?'Fly out':'Out'):(['','Single','Double','Triple'][b.p|0]||'Safe');
- if(G.pr)t+=(t?' · ':'')+G.pr+(G.pr>1?' runs':' run')+' scored';
+ if(G.pr)t+=(t?' t ':'')+G.pr+(G.pr>1?' runs':' run')+' scored';
  if(G.inplay)rc();R=R.filter(r=>!r.out);R.forEach(r=>{r.p=r.tgt;r.must=null;r.man=0});
  G.inplay=G.foul=G.flyo=0;G.cv=null;G.fs=null;G.bat=null;G.hw=null;G.ovr=null;G.pr=0;B=newB();G.st='ready';G.wait=1.4;if(t)say(t)}
 function play(dt){G.pt+=dt;const n=Math.ceil(dt/.01),h=dt/n;
@@ -173,7 +177,7 @@ function draw(){X.clearRect(0,0,800,600);X.fillStyle='#2d6a38';X.fillRect(0,0,80
   else if(!G.top){X.fillStyle='#fff';X.font='13px system-ui';X.fillText(PN[pt]+' – aim and click',ZX,ZY+150)}}
  X.fillStyle='rgba(0,0,0,.6)';X.fillRect(8,8,214,78);X.fillStyle='#fff';X.textAlign='left';
  X.font='bold 15px system-ui';X.fillText('YOU '+G.sc[0]+'  –  '+G.sc[1]+' CPU',16,28);
- X.font='13px system-ui';X.fillText((G.top?'▲ ':'▼ ')+'Inning '+G.inn+'/'+G.N+'   Outs '+G.outs,16,48);X.fillText('Balls '+G.b+'   Strikes '+G.s,16,66);
+ X.font='13px system-ui';X.fillText((G.top?'▲ ':'▼ ')+'Inning '+G.inn+'/'+G.N+'    Outs '+G.outs,16,48);X.fillText('Balls '+G.b+'    Strikes '+G.s,16,66);
  X.fillStyle='#bbb';X.font='11px system-ui';X.fillText(G.top?'You: batting':'You: pitching & fielding',16,81);
  const oc=k=>R.some(r=>!r.out&&r.p===k);[[2,745,22],[1,763,40],[3,727,40]].forEach(([k,x,y])=>{X.save();X.translate(x,y);X.rotate(.785);X.fillStyle=oc(k)?'#fde047':'rgba(255,255,255,.4)';X.fillRect(-6,-6,12,12);X.restore()});
  if(G.mt>0){X.globalAlpha=Math.min(1,G.mt*2);X.textAlign='center';X.font='bold 30px system-ui';X.lineWidth=5;X.strokeStyle='#000';X.strokeText(G.msg,400,75);X.fillStyle='#fff';X.fillText(G.msg,400,75);X.globalAlpha=1}}
@@ -206,4 +210,4 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();if([' ','arrowup','ar
 document.querySelectorAll('[data-a]').forEach(b=>b.onpointerdown=e=>{e.preventDefault();act(b.dataset.a)});
 let lt=0;function loop(t){const dt=Math.min(.05,(t-lt)/1000||0);lt=t;upd(dt);draw();ui();requestAnimationFrame(loop)}
 requestAnimationFrame(loop);
-</script></body></html> -->
+</script></body></html>
